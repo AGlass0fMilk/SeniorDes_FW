@@ -68,6 +68,7 @@
 #include "LED_Service.h"
 #include "Button_Service.h"
 #include "Data_Service.h"
+//#include "EightBit_Service.h"
 
 
 /*********************************************************************
@@ -211,6 +212,14 @@ static PIN_State ledPinState;
 PIN_Config ledPinTable[] = {
   Board_LED0 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
   Board_LED1 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MAX,
+  IOID_1 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,
+  IOID_0 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,
+  IOID_30 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,
+  IOID_29 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,
+  IOID_28 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,
+  IOID_27 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,
+  IOID_26 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,
+  IOID_25 | PIN_GPIO_OUTPUT_EN | PIN_GPIO_LOW | PIN_PUSHPULL | PIN_DRVSTR_MIN,
   PIN_TERMINATE
 };
 
@@ -324,6 +333,7 @@ static DataServiceCBs_t user_Data_ServiceCBs =
   .pfnChangeCb    = user_service_ValueChangeCB, // Characteristic value change callback handler
   .pfnCfgChangeCb = user_service_CfgChangeCB, // Noti/ind configuration callback handler
 };
+
 
 
 /*********************************************************************
@@ -495,6 +505,7 @@ static void ProjectZero_init(void)
   LedService_RegisterAppCBs( &user_LED_ServiceCBs );
   ButtonService_RegisterAppCBs( &user_Button_ServiceCBs );
   DataService_RegisterAppCBs( &user_Data_ServiceCBs );
+  //EighBit_Service_RegisterAppCBs( &user_EB_ServiceCBs );
 
   // Placeholder variable for characteristic intialization
   uint8_t initVal[40] = {0};
@@ -867,6 +878,62 @@ void user_LedService_ValueChangeHandler(char_data_t *pCharData)
   }
 }
 
+/*
+ * @brief   Handle a write request sent from a peer device.
+ *
+ *          Invoked by the Task based on a message received from a callback.
+ *
+ *          When we get here, the request has already been accepted by the
+ *          service and is valid from a BLE protocol perspective as well as
+ *          having the correct length as defined in the service implementation.
+ *
+ * @param   pCharData  pointer to malloc'd char write data
+ *
+ * @return  None.
+ */
+void user_EBService_ValueChangeHandler(char_data_t *pCharData)
+{
+  static uint8_t pretty_data_holder[16]; // 5 bytes as hex string "AA:BB:CC:DD:EE"
+  Util_convertArrayToHexString(pCharData->data, pCharData->dataLen,
+                               pretty_data_holder, sizeof(pretty_data_holder));
+
+  switch (pCharData->paramID)
+  {
+    case LS_LED0_ID:
+      Log_info3("Value Change msg: %s %s: %s",
+                (IArg)"LED Service",
+                (IArg)"LED0",
+                (IArg)pretty_data_holder);
+
+      // Do something useful with pCharData->data here
+      // -------------------------
+      // Set the output value equal to the received value. 0 is off, not 0 is on
+      PIN_setOutputValue(ledPinHandle, Board_LED0, pCharData->data[0]);
+      Log_info2("Turning %s %s",
+                (IArg)"\x1b[31mLED0\x1b[0m",
+                (IArg)(pCharData->data[0]?"on":"off"));
+      break;
+
+    case LS_LED1_ID:
+      Log_info3("Value Change msg: %s %s: %s",
+                (IArg)"LED Service",
+                (IArg)"LED1",
+                (IArg)pretty_data_holder);
+
+      // Do something useful with pCharData->data here
+      // -------------------------
+      // Set the output value equal to the received value. 0 is off, not 0 is on
+      PIN_setOutputValue(ledPinHandle, Board_LED1, pCharData->data[0]);
+      Log_info2("Turning %s %s",
+                (IArg)"\x1b[32mLED1\x1b[0m",
+                (IArg)(pCharData->data[0]?"on":"off"));
+      break;
+
+  default:
+    return;
+  }
+}
+
 
 /*
  * @brief   Handle a CCCD (configuration change) write received from a peer
@@ -936,12 +1003,17 @@ void user_ButtonService_CfgChangeHandler(char_data_t *pCharData)
  *
  * @return  None.
  */
+
 void user_DataService_ValueChangeHandler(char_data_t *pCharData)
 {
   // Value to hold the received string for printing via Log, as Log printouts
   // happen in the Idle task, and so need to refer to a global/static variable.
-  static uint8_t received_string[DS_STRING_LEN] = {0};
+  //static uint8_t received_string[DS_STRING_LEN] = {0};
 
+  uint8_t received_string[DS_STRING_LEN] = {0};
+  int i = 0;
+  int bit = 0;
+  uint8_t firstChar = 0;
   switch (pCharData->paramID)
   {
     case DS_STRING_ID:
@@ -950,6 +1022,16 @@ void user_DataService_ValueChangeHandler(char_data_t *pCharData)
       // Copy received data to holder array, ensuring NULL termination.
       memset(received_string, 0, DS_STRING_LEN);
       memcpy(received_string, pCharData->data, DS_STRING_LEN-1);
+
+      firstChar = received_string[0];
+
+      for(i = 0; i < 8; i++) {
+          //PIN_setOutputValue(ledPinHandle, Board_LED0, pCharData->data[0]);
+          bit = ((firstChar & (0x1 << i)) >> i);
+          PIN_setOutputValue(ledPinHandle, ledPinTable[i + 2], bit);
+
+      }
+
       // Needed to copy before log statement, as the holder array remains after
       // the pCharData message has been freed and reused for something else.
       Log_info3("Value Change msg: %s %s: %s",
